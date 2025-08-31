@@ -16,7 +16,7 @@ cronrunner-*
 coverage.txt
 
 # Go modules
-go.sum
+# go.sum - needed for reproducible builds
 
 # IDE files
 .vscode/
