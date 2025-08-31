@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.25.0'
+    
+    - name: Build for multiple architectures
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-extldflags "-static"' -o cronrunner-linux-amd64 .
+        
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -ldflags '-extldflags "-static"' -o cronrunner-linux-arm64 .
+        
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -a -ldflags '-extldflags "-static"' -o cronrunner-linux-arm .
+    
+    - name: Create release archives
+      run: |
+        # Create tar.gz archives
+        tar -czf cronrunner-linux-amd64.tar.gz cronrunner-linux-amd64
+        tar -czf cronrunner-linux-arm64.tar.gz cronrunner-linux-arm64
+        tar -czf cronrunner-linux-arm.tar.gz cronrunner-linux-arm
+        
+        # Calculate checksums
+        sha256sum cronrunner-linux-amd64.tar.gz > checksums.txt
+        sha256sum cronrunner-linux-arm64.tar.gz >> checksums.txt
+        sha256sum cronrunner-linux-arm.tar.gz >> checksums.txt
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          cronrunner-linux-amd64.tar.gz
+          cronrunner-linux-arm64.tar.gz
+          cronrunner-linux-arm.tar.gz
+          checksums.txt
+        body: |
+          ## CronRunner ${{ github.ref_name }}
+          
+          A lightweight cron runner for Docker containers.
+          
+          ### Usage
+          
+          ```dockerfile
+          FROM python:3.13
+          
+          RUN wget https://github.com/daluntw/cronrunner/releases/download/${{ github.ref_name }}/cronrunner-linux-amd64.tar.gz -O- | tar -xz && mv cronrunner-linux-amd64 /cronrunner
+          
+          CMD ["/cronrunner"]
+          ```
+          
+          ```bash
+          docker run -it -d \
+            -e CRON_EXPRESSION=$(echo "0 8 * * *" | base64) \
+            -e CRON_CMD=$(echo "/app/start.sh" | base64) \
+            -e CRON_KILL_AFTER_MIN=30 \
+            your-image
+          ```
+          
+          ### Files
+          - `cronrunner-linux-amd64.tar.gz` - Linux x86_64 binary
+          - `cronrunner-linux-arm64.tar.gz` - Linux ARM64 binary  
+          - `cronrunner-linux-arm.tar.gz` - Linux ARM binary
+          - `checksums.txt` - SHA256 checksums
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
