@@ -18,7 +18,7 @@ A lightweight, statically-compiled cron runner designed for Docker containers. S
 
 ```bash
 # Download latest release
-wget https://github.com/daluntw/cronrunner/releases/download/v1.0/cronrunner-linux-amd64.tar.gz -O- | tar -xz
+wget https://github.com/daluntw/cronrunner/releases/download/v1.1/cronrunner-linux-amd64.tar.gz -O- | tar -xz
 mv cronrunner-linux-amd64 /usr/local/bin/cronrunner
 chmod +x /usr/local/bin/cronrunner
 ```
@@ -29,7 +29,7 @@ chmod +x /usr/local/bin/cronrunner
 FROM python:3.13
 
 # Install cronrunner
-RUN wget https://github.com/daluntw/cronrunner/releases/download/v1.0/cronrunner-linux-amd64.tar.gz -O- | tar -xz && \
+RUN wget https://github.com/daluntw/cronrunner/releases/download/v1.1/cronrunner-linux-amd64.tar.gz -O- | tar -xz && \
     mv cronrunner-linux-amd64 /cronrunner && \
     chmod +x /cronrunner
 
@@ -51,6 +51,7 @@ CMD ["/cronrunner"]
 | `CRON_EXPRESSION` | Yes | Cron schedule expression | Base64 encoded |
 | `CRON_CMD` | Yes | Command to execute | Base64 encoded |
 | `CRON_KILL_AFTER_MIN` | No | Timeout in minutes | Plain integer |
+| `LOG_FILE` | No | If set, tee stdout/stderr to this file | Absolute or container path |
 
 ### Examples
 
@@ -59,6 +60,7 @@ CMD ["/cronrunner"]
 docker run -d \
   -e CRON_EXPRESSION=$(echo "0 8 * * *" | base64) \
   -e CRON_CMD=$(echo "/app/backup.sh" | base64) \
+  -e LOG_FILE=/var/log/cronrunner.log \
   your-image
 ```
 
@@ -68,6 +70,7 @@ docker run -d \
   -e CRON_EXPRESSION=$(echo "0 */6 * * *" | base64) \
   -e CRON_CMD=$(echo "/app/heavy-task.sh" | base64) \
   -e CRON_KILL_AFTER_MIN=30 \
+  -e LOG_FILE=/var/log/cronrunner.log \
   your-image
 ```
 
@@ -118,12 +121,13 @@ echo "ps aux | grep python | wc -l" | base64
 
 ## Logging
 
-CronRunner provides comprehensive logging:
+CronRunner provides comprehensive logging. By default, logs go to stdout/stderr. If `LOG_FILE` is set, both stdout and stderr are tee'd to the specified file as well as the console:
 
 ```
 2025/09/01 08:00:00 Starting cronrunner with schedule: 0 8 * * *
 2025/09/01 08:00:00 Command to execute: /app/backup.sh
 2025/09/01 08:00:00 Command timeout: 30 minutes
+2025/09/01 08:00:00 Tee-ing stdout/stderr to log file: /var/log/cronrunner.log
 2025/09/01 08:00:00 Cron runner started successfully
 2025/09/01 08:00:00 Executing command: /app/backup.sh
 2025/09/01 08:05:23 Command completed successfully in 5m23.456s
