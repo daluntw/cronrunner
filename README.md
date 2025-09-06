@@ -52,6 +52,7 @@ CMD ["/cronrunner"]
 | `CRON_CMD` | Yes | Command to execute | Base64 encoded |
 | `CRON_KILL_AFTER_MIN` | No | Timeout in minutes | Plain integer |
 | `LOG_FILE` | No | If set, tee stdout/stderr to this file | Absolute or container path |
+| `RESTART_ON_FAIL` | No | If true/1, rerun command until it exits 0 | `1`, `true`, `yes` |
 
 ### Examples
 
@@ -79,6 +80,15 @@ docker run -d \
 docker run -d \
   -e CRON_EXPRESSION=$(echo "*/10 * * * * *" | base64) \
   -e CRON_CMD=$(echo "/app/monitor.sh" | base64) \
+  your-image
+```
+
+**Auto-restart on failure:**
+```bash
+docker run -d \
+  -e CRON_EXPRESSION=$(echo "*/5 * * * * *" | base64) \
+  -e CRON_CMD=$(echo "/app/unreliable-task.sh" | base64) \
+  -e RESTART_ON_FAIL=1 \
   your-image
 ```
 

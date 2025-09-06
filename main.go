@@ -21,6 +21,7 @@ func main() {
 	appCmd := os.Getenv("CRON_CMD")
 	killAfterMinStr := os.Getenv("CRON_KILL_AFTER_MIN")
 	logFilePath := os.Getenv("LOG_FILE")
+	restartOnFailEnv := os.Getenv("RESTART_ON_FAIL")
 
 	if cronExpr == "" {
 		log.Fatal("CRON_EXPRESSION environment variable is required")
@@ -80,9 +81,17 @@ func main() {
 
 	c := cron.New(cron.WithSeconds())
 
+	// Parse RESTART_ON_FAIL: accept 1, true, TRUE, True
+	restartOnFail := false
+	if restartOnFailEnv != "" {
+		switch strings.ToLower(strings.TrimSpace(restartOnFailEnv)) {
+		case "1", "true", "yes", "y":
+			restartOnFail = true
+		}
+	}
+
 	_, err = c.AddFunc(cronSchedule, func() {
 		log.Printf("Executing command: %s", appCommand)
-		start := time.Now()
 
 		parts := strings.Fields(appCommand)
 		if len(parts) == 0 {
@@ -90,33 +99,49 @@ func main() {
 			return
 		}
 
-		cmd := exec.Command(parts[0], parts[1:]...)
-		cmd.Stdout = stdoutWriter
-		cmd.Stderr = stderrWriter
+		for attempt := 1; ; attempt++ {
+			start := time.Now()
 
-		var err error
-		var ctx context.Context
-		var cancel context.CancelFunc
+			var cmd *exec.Cmd
+			var ctx context.Context
+			var cancel context.CancelFunc
 
-		if killAfterMin > 0 {
-			ctx, cancel = context.WithTimeout(context.Background(), time.Duration(killAfterMin)*time.Minute)
-			defer cancel()
-			cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
+			if killAfterMin > 0 {
+				ctx, cancel = context.WithTimeout(context.Background(), time.Duration(killAfterMin)*time.Minute)
+				cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
+			} else {
+				cmd = exec.Command(parts[0], parts[1:]...)
+			}
+
 			cmd.Stdout = stdoutWriter
 			cmd.Stderr = stderrWriter
-		}
 
-		err = cmd.Run()
-		duration := time.Since(start)
+			err := cmd.Run()
+			duration := time.Since(start)
 
-		if err != nil {
-			if killAfterMin > 0 && ctx != nil && ctx.Err() == context.DeadlineExceeded {
-				log.Printf("Command timed out after %v (limit: %d minutes): %v", duration, killAfterMin, err)
-			} else {
-				log.Printf("Command failed after %v: %v", duration, err)
+			if cancel != nil {
+				cancel()
 			}
-		} else {
-			log.Printf("Command completed successfully in %v", duration)
+
+			if err != nil {
+				// Check if this was a timeout
+				if killAfterMin > 0 && ctx != nil && ctx.Err() == context.DeadlineExceeded {
+					log.Printf("Command timed out after %v (limit: %d minutes): %v", duration, killAfterMin, err)
+				} else {
+					log.Printf("Command failed after %v (attempt %d): %v", duration, attempt, err)
+				}
+
+				if restartOnFail {
+					log.Printf("RESTART_ON_FAIL is enabled; restarting command...")
+					continue
+				}
+
+				// Not restarting; exit loop
+				break
+			}
+
+			log.Printf("Command completed successfully in %v (attempt %d)", duration, attempt)
+			break
 		}
 	})
 
