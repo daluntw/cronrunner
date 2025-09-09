@@ -91,6 +91,7 @@ func main() {
 	}
 
 	_, err = c.AddFunc(cronSchedule, func() {
+
 		log.Printf("Executing command: %s", appCommand)
 
 		parts := strings.Fields(appCommand)
@@ -99,15 +100,26 @@ func main() {
 			return
 		}
 
+		start := time.Now()
+		var hardDeadline time.Time
+		if killAfterMin > 0 {
+			hardDeadline = start.Add(time.Duration(killAfterMin) * time.Minute)
+			log.Printf("Hard kill deadline set for %s (limit: %d minutes)", hardDeadline.Format(time.RFC3339), killAfterMin)
+		}
+
 		for attempt := 1; ; attempt++ {
-			start := time.Now()
 
 			var cmd *exec.Cmd
 			var ctx context.Context
 			var cancel context.CancelFunc
 
 			if killAfterMin > 0 {
-				ctx, cancel = context.WithTimeout(context.Background(), time.Duration(killAfterMin)*time.Minute)
+				remaining := time.Until(hardDeadline)
+				if remaining <= 0 {
+					log.Printf("Kill deadline reached; not starting attempt %d", attempt)
+					break
+				}
+				ctx, cancel = context.WithTimeout(context.Background(), remaining)
 				cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
 			} else {
 				cmd = exec.Command(parts[0], parts[1:]...)
@@ -123,24 +135,31 @@ func main() {
 				cancel()
 			}
 
+			exitCode := 0
+			killed := false
+
 			if err != nil {
 				// Check if this was a timeout
 				if killAfterMin > 0 && ctx != nil && ctx.Err() == context.DeadlineExceeded {
-					log.Printf("Command timed out after %v (limit: %d minutes): %v", duration, killAfterMin, err)
+					log.Printf("Command timed out after %v; hard deadline %s reached (limit: %d minutes): %v", duration, hardDeadline.Format(time.RFC3339), killAfterMin, err)
+					killed = true
 				} else {
-					log.Printf("Command failed after %v (attempt %d): %v", duration, attempt, err)
+					if ee, ok := err.(*exec.ExitError); ok {
+						exitCode = ee.ExitCode()
+					} else if cmd.ProcessState != nil {
+						exitCode = cmd.ProcessState.ExitCode()
+					}
 				}
-
-				if restartOnFail {
-					log.Printf("RESTART_ON_FAIL is enabled; restarting command...")
-					continue
-				}
-
-				// Not restarting; exit loop
-				break
 			}
 
-			log.Printf("Command completed successfully in %v (attempt %d)", duration, attempt)
+			log.Printf("Command exited after %v: exit code %d, error: %v", duration, exitCode, err)
+
+			if restartOnFail && !killed {
+				log.Printf("RESTART_ON_FAIL is enabled; restarting command...")
+				continue
+			}
+
+			log.Printf("Command completed")
 			break
 		}
 	})
