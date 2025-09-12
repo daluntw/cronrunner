@@ -154,7 +154,7 @@ func main() {
 
 			log.Printf("Command exited after %v: exit code %d, error: %v", duration, exitCode, err)
 
-			if restartOnFail && !killed {
+			if restartOnFail && killed {
 				log.Printf("RESTART_ON_FAIL is enabled; restarting command...")
 				continue
 			}
