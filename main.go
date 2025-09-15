@@ -40,25 +40,8 @@ func main() {
 		}
 	}
 
-	// Configure logging and output tee if LOG_FILE is specified
-	var (
-		logFile      *os.File
-		stdoutWriter io.Writer = os.Stdout
-		stderrWriter io.Writer = os.Stderr
-	)
-	if logFilePath != "" {
-		var err error
-		logFile, err = os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Fatalf("Failed to open LOG_FILE '%s': %v", logFilePath, err)
-		}
-		defer logFile.Close()
-		stdoutWriter = io.MultiWriter(os.Stdout, logFile)
-		stderrWriter = io.MultiWriter(os.Stderr, logFile)
-		// Log package writes to stderr by default; keep that behavior and tee to file
-		log.SetOutput(stderrWriter)
-		log.Printf("Teeing stdout/stderr to log file: %s", logFilePath)
-	}
+	// Cronrunner's own logs go to stderr by default.
+	// If LOG_FILE is set, it will capture only the child process output per run.
 
 	cronDecoded, err := base64.StdEncoding.DecodeString(cronExpr)
 	if err != nil {
@@ -125,8 +108,25 @@ func main() {
 				cmd = exec.Command(parts[0], parts[1:]...)
 			}
 
-			cmd.Stdout = stdoutWriter
-			cmd.Stderr = stderrWriter
+			// Open per-run log file (if provided) and tee only child process output
+			var cStdout io.Writer = os.Stdout
+			var cStderr io.Writer = os.Stderr
+			var execLogFile *os.File
+			if logFilePath != "" {
+				f, openErr := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if openErr != nil {
+					log.Printf("Failed to open LOG_FILE '%s' for this run: %v", logFilePath, openErr)
+				} else {
+					execLogFile = f
+					// Write per-run start separator only to the log file
+					_, _ = io.WriteString(execLogFile, "===== RUN START "+time.Now().Format(time.RFC3339)+" =====\n")
+					cStdout = io.MultiWriter(os.Stdout, execLogFile)
+					cStderr = io.MultiWriter(os.Stderr, execLogFile)
+				}
+			}
+
+			cmd.Stdout = cStdout
+			cmd.Stderr = cStderr
 
 			err := cmd.Run()
 			duration := time.Since(start)
@@ -150,6 +150,12 @@ func main() {
 						exitCode = cmd.ProcessState.ExitCode()
 					}
 				}
+			}
+
+			// Write per-run end separator with exit code and duration, then close the log file
+			if execLogFile != nil {
+				_, _ = io.WriteString(execLogFile, "===== RUN END "+time.Now().Format(time.RFC3339)+" exit="+strconv.Itoa(exitCode)+" duration="+duration.String()+" =====\n\n")
+				_ = execLogFile.Close()
 			}
 
 			log.Printf("Command exited after %v: exit code %d, error: %v", duration, exitCode, err)

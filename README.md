@@ -131,15 +131,15 @@ echo "ps aux | grep python | wc -l" | base64
 
 ## Logging
 
-CronRunner provides comprehensive logging. By default, logs go to stdout/stderr. If `LOG_FILE` is set, both stdout and stderr are tee'd to the specified file as well as the console:
+CronRunner provides comprehensive logging. By default, cronrunner's own logs go to stderr, and the child process output goes to your console. If `LOG_FILE` is set, only the child process stdout and stderr are additionally written to the specified file for each run. The file is opened at the start of each execution and closed immediately after the process exits (including error/timeout cases). Cronrunner's own logs are not written to `LOG_FILE`.
 
 ```
 2025/09/01 08:00:00 Starting cronrunner with schedule: 0 8 * * *
 2025/09/01 08:00:00 Command to execute: /app/backup.sh
 2025/09/01 08:00:00 Command timeout: 30 minutes
-2025/09/01 08:00:00 Tee-ing stdout/stderr to log file: /var/log/cronrunner.log
 2025/09/01 08:00:00 Cron runner started successfully
 2025/09/01 08:00:00 Executing command: /app/backup.sh
+# child stdout/stderr is written to /var/log/cronrunner.log for this run
 2025/09/01 08:05:23 Command completed successfully in 5m23.456s
 ```
 
