@@ -51,6 +51,7 @@ CMD ["/cronrunner"]
 | `CRON_EXPRESSION` | Yes | Cron schedule expression | Base64 encoded |
 | `CRON_CMD` | Yes | Command to execute | Base64 encoded |
 | `CRON_KILL_AFTER_MIN` | No | Timeout in minutes | Plain integer |
+| `CRON_TZ` | No | Timezone used by scheduler | Example: `Asia/Taipei`, `UTC` |
 | `LOG_FILE` | No | If set, tee stdout/stderr to this file | Absolute or container path |
 | `RESTART_ON_FAIL` | No | If true/1, rerun command until it exits 0 | `1`, `true`, `yes` |
 
@@ -61,6 +62,7 @@ CMD ["/cronrunner"]
 docker run -d \
   -e CRON_EXPRESSION=$(echo "0 8 * * *" | base64) \
   -e CRON_CMD=$(echo "/app/backup.sh" | base64) \
+  -e CRON_TZ=Asia/Taipei \
   -e LOG_FILE=/var/log/cronrunner.log \
   your-image
 ```

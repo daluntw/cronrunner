@@ -22,6 +22,7 @@ func main() {
 	killAfterMinStr := os.Getenv("CRON_KILL_AFTER_MIN")
 	logFilePath := os.Getenv("LOG_FILE")
 	restartOnFailEnv := os.Getenv("RESTART_ON_FAIL")
+	cronTZ := os.Getenv("CRON_TZ")
 
 	if cronExpr == "" {
 		log.Fatal("CRON_EXPRESSION environment variable is required")
@@ -62,7 +63,19 @@ func main() {
 		log.Printf("Command timeout: %d minutes", killAfterMin)
 	}
 
-	c := cron.New(cron.WithSeconds())
+	// Configure scheduler options
+	var cronOptions []cron.Option
+	cronOptions = append(cronOptions, cron.WithSeconds())
+	if strings.TrimSpace(cronTZ) != "" {
+		loc, tzErr := time.LoadLocation(strings.TrimSpace(cronTZ))
+		if tzErr != nil {
+			log.Fatalf("Invalid CRON_TZ value '%s': %v", cronTZ, tzErr)
+		}
+		cronOptions = append(cronOptions, cron.WithLocation(loc))
+		log.Printf("Using CRON_TZ timezone: %s", cronTZ)
+	}
+
+	c := cron.New(cronOptions...)
 
 	// Parse RESTART_ON_FAIL: accept 1, true, TRUE, True
 	restartOnFail := false
